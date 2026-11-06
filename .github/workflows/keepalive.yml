@@ -1,0 +1,17 @@
+# Szturchnięcie bazy Supabase co 2 dni — darmowy projekt usypia po ok. tygodniu bez aktywności.
+# Klucz publishable jest publiczny z założenia (jest też w index.html); funkcja ping() nie daje dostępu do danych.
+# Gdy zadanie się nie powiedzie, GitHub wyśle e-mail właścicielowi repozytorium.
+name: keepalive
+on:
+  schedule:
+    - cron: "17 6 */2 * *"
+  workflow_dispatch:
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: ping
+        run: |
+          curl -fsS -X POST "https://edxtfametahkkqzudafe.supabase.co/rest/v1/rpc/ping" \
+            -H "apikey: sb_publishable_peZ_FYGXFEwwBCbWsty1Rw_o1LuxQek" \
+            -H "Content-Type: application/json" -d '{}'

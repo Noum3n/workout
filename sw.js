@@ -1,7 +1,7 @@
 /* gym-tracker — service worker: apka działa offline (ekran, katalog, biblioteka Supabase).
    Strona główna: najpierw sieć (nowa wersja apki), bez sieci z pamięci. Pozostałe pliki apki: z pamięci.
    Zapytania do Supabase nie przechodzą przez pamięć. Wersja wstawiana przez tools/build_app.py. */
-const V="gt-8f28144de520";
+const V="gt-911ee2c2da31";
 const SHELL=["./","./index.html","./supabase.js","./manifest.webmanifest","./icon-192.png","./icon-512.png","./apple-touch-icon.png"];
 self.addEventListener("install",e=>{e.waitUntil(caches.open(V).then(c=>c.addAll(SHELL)).then(()=>self.skipWaiting()))});
 self.addEventListener("activate",e=>{e.waitUntil(caches.keys().then(ks=>Promise.all(ks.filter(k=>k!==V).map(k=>caches.delete(k)))).then(()=>self.clients.claim()))});

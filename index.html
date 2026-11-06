@@ -459,7 +459,7 @@ function openSheet(id){const s=q("#"+id);s.hidden=false;document.body.classList.
 function closeSheet(id){q("#"+id).hidden=true;if(q("#gate").hidden&&q("#acct").hidden&&q("#admin").hidden&&q("#swap").hidden&&q("#creator").hidden)document.body.classList.remove("lock")}
 document.addEventListener("click",ev=>{const c=ev.target.closest("[data-wclose]");if(c)closeSheet(c.dataset.wclose)});
 document.addEventListener("keydown",ev=>{if(ev.key==="Escape"){if(!q("#acct").hidden)closeSheet("acct");if(!q("#admin").hidden)closeSheet("admin")}});
-q("#acctBtn").addEventListener("click",()=>{ac={};confirmLogout=false;renderAcct();openSheet("acct")});
+q("#acctBtn").addEventListener("click",()=>{ac={};imp=null;confirmLogout=false;renderAcct();openSheet("acct")});
 q("#adminBtn").addEventListener("click",()=>{ad={};openSheet("admin");loadAdmin()});
 
 async function share(text,box){
@@ -482,7 +482,12 @@ function renderAcct(){
   <form class="form" data-ac="fb"><label>Co działa źle albo czego brakuje?<textarea name="text" maxlength="2000" rows="3" required><\/textarea><\/label><button class="btn sm" type="submit">Wyślij do admina<\/button><\/form>
   <h3 class="sec">Twoje dane<\/h3>
   <p class="note">Twoje treningi, plan, notatki i linki widzisz tylko Ty. Admin widzi Twój e-mail, imię, datę dołączenia i ostatniej aktywności — nie widzi treningów ani notatek. Dane są w bazie Supabase w UE (Frankfurt). Notatki są opcjonalne — nie musisz wpisywać informacji o zdrowiu.<\/p>
-  <div class="row" style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn sm" data-ac="export" type="button">Pobierz moje dane (JSON)<\/button><\/div>
+  <div class="row" style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn sm" data-ac="export" type="button">Pobierz moje dane (JSON)<\/button>
+  <label class="btn sm" style="cursor:pointer">Importuj dane z pliku<input type="file" accept=".json,application/json" data-ac="importfile" hidden><\/label><\/div>
+  ${imp?`<div class="dialog" style="margin-top:8px"><strong>Import z pliku${imp.from?" ("+e_(imp.from)+")":""}<\/strong>
+    <p class="note">${[imp.plan?`plan „${e_(imp.plan.name)}”`:"",`${imp.sessions.length} ${imp.sessions.length===1?"trening":"treningów"}`,`${Object.keys(imp.videos).length} linków do filmów`,`${Object.keys(imp.swaps).length} zamian`].filter(Boolean).join(" · ")}.<\/p>
+    <p class="note">${imp.plan?"Plan z pliku zastąpi obecny plan. ":""}Treningi z tymi samymi datami i dniem zostaną nadpisane, pozostałe zostają.<\/p>
+    <div class="rowline"><button class="btn sm pri" data-ac="importyes" type="button">Importuj<\/button><button class="btn sm ghost" data-ac="importno" type="button">Anuluj<\/button><\/div><\/div>`:""}
   <h3 class="sec">Wylogowanie<\/h3>
   ${confirmLogout?`<div class="dialog"><strong>${n} ${n===1?"zmiana nie została":"zmian nie zostało"} jeszcze wysłanych.<\/strong><p class="note">Po wylogowaniu przepadną. Połącz się z internetem i poczekaj chwilę albo wyloguj mimo to.<\/p><div class="rowline"><button class="btn sm danger" data-ac="logoutforce" type="button">Wyloguj mimo to<\/button><button class="btn sm ghost" data-ac="logoutno" type="button">Anuluj<\/button><\/div><\/div>`
     :`<button class="btn sm" data-ac="logout" type="button">Wyloguj<\/button>`}
@@ -491,7 +496,9 @@ function renderAcct(){
     :`<button class="btn sm ghost danger" data-ac="del" type="button">Usuń konto…<\/button>`}`;
 }
 q("#acbody").addEventListener("click",async ev=>{const b=ev.target.closest("button[data-ac]");if(!b)return;const a=b.dataset.ac;
-  if(a==="export"){const blob=new Blob([JSON.stringify({exported_at:new Date().toISOString(),account:{email:me.email,name:me.name},
+  if(a==="importno"){imp=null;return renderAcct()}
+  if(a==="importyes"){const n=doImport(imp);imp=null;ac={ok:`Zaimportowano: ${n} ${n===1?"trening":"treningów"}. Wysyłam na konto…`};renderAcct();q("#acct").scrollTop=0;return}
+  if(a==="export"){const blob=new Blob([JSON.stringify({format:"silownia-1",exported_at:new Date().toISOString(),account:{email:me.email,name:me.name},
       plan:PLANOBJ,settings:S.settings,sessions:S.sessions,swaps:S.swaps,videos:S.videos},null,2)],{type:"application/json"});
     const a2=document.createElement("a");a2.href=URL.createObjectURL(blob);a2.download="silownia-moje-dane-"+today()+".json";document.body.appendChild(a2);a2.click();a2.remove();setTimeout(()=>URL.revokeObjectURL(a2.href),5000);return}
   if(a==="logout")return logout(false);
@@ -500,6 +507,26 @@ q("#acbody").addEventListener("click",async ev=>{const b=ev.target.closest("butt
   if(a==="del"){ac={del:true};return renderAcct()}
   if(a==="delno"){ac={};return renderAcct()}
 });
+/* import: plik w formacie eksportu (także przeniesienie danych ze starej apki) */
+let imp=null;
+q("#acbody").addEventListener("change",async ev=>{const i=ev.target.closest("input[data-ac=importfile]");if(!i||!i.files[0])return;
+  let f;try{f=JSON.parse(await i.files[0].text())}catch(e){f=null}
+  if(!f||!Array.isArray(f.sessions)){imp=null;ac={err:"To nie jest plik z danymi apki (oczekiwany plik JSON z eksportu)."};renderAcct();return}
+  const okPlan=f.plan&&f.plan.id&&Array.isArray(f.plan.days);
+  imp={from:i.files[0].name,plan:okPlan?f.plan:null,settings:f.settings||null,
+    sessions:f.sessions.filter(x=>x&&x.id&&x.day&&x.date&&x.ex),swaps:f.swaps||{},videos:f.videos||{}};
+  ac={};renderAcct();
+});
+function doImport(d){
+  if(d.plan){LS.set("ab.plan",{plan:d.plan,ts:Date.now()});applyPlan(d.plan,"creator");sync("plan",null,{plan:d.plan})}
+  if(d.settings&&(d.settings.start||d.settings.planId)){S.settings={...d.settings};LS.set("ab.settings",S.settings);sync("settings",null,S.settings)}
+  const ids=new Set(d.sessions.map(x=>x.id));
+  S.sessions=[...d.sessions,...S.sessions.filter(x=>!ids.has(x.id))].sort((a,b)=>(b.ts||0)-(a.ts||0));LS.set("ab.sessions",S.sessions);
+  d.sessions.forEach(x=>{const {id,...rest}=x;sync("session",id,rest)});
+  Object.entries(d.swaps).forEach(([k,v])=>{if(v&&v.cat){S.swaps[k]=v;sync("swap",k,v)}});LS.set("ab.swaps",S.swaps);
+  Object.entries(d.videos).forEach(([k,v])=>{if(v){S.videos[k]=v;sync("video",k,v)}});LS.set("ab.videos",S.videos);
+  render();return d.sessions.length;
+}
 q("#acbody").addEventListener("submit",async ev=>{ev.preventDefault();const f=ev.target,k=f.dataset.ac,v=Object.fromEntries(new FormData(f));
   const btn=f.querySelector("[type=submit]");btn.disabled=true;
   try{

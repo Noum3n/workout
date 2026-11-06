@@ -753,7 +753,7 @@ function renderDay(day){
     </section>`;
   });
   h+=`<section class="finish"><label for="note-${day}" style="font-weight:600">Notatka po treningu</label>
-    <textarea id="note-${day}" data-f="note" placeholder="Samopoczucie, tył uda, co zmienić następnym razem…">${esc(d.note)}</textarea>
+    <textarea id="note-${day}" data-f="note" placeholder="Samopoczucie, co poszło dobrze, co zmienić następnym razem…">${esc(d.note)}</textarea>
     <div class="rowline"><button class="btn pri" data-act="finish" type="button">Zapisz trening ${day}</button>${saved===day?`<span class="toast">Zapisano w historii</span>`:""}</div></section>`;
   return h;
 }

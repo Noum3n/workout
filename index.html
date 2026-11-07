@@ -2,8 +2,7 @@
 <html lang="pl">
 <meta charset="utf-8">
 <title>Siłownia</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap">
+<link rel="stylesheet" href="fonts/fonts.css">
 <style>
 /* Layout: one-column phone logbook. Sticky header with A/B/Historia tabs, exercise cards, fixed rest-timer bar. */
 :root{
@@ -139,6 +138,7 @@ body.lock{overflow:hidden}
 .pday li .mono{color:var(--muted)}
 @media (prefers-reduced-motion: reduce){*{transition:none!important}}
 </style>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-FdKHbo1qrKhFzwph/Va2Y6stMenA5tlLIsyPmHQLMnc=' 'sha256-5WS6AsFzEbDWH3KcHnrpRmVc7ACto/QGSKR60E3E60Y='; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self' https://edxtfametahkkqzudafe.supabase.co; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#1B201D">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -481,7 +481,7 @@ function renderAcct(){
   <h3 class="sec">Zgłoś uwagę<\/h3>
   <form class="form" data-ac="fb"><label>Co działa źle albo czego brakuje?<textarea name="text" maxlength="2000" rows="3" required><\/textarea><\/label><button class="btn sm" type="submit">Wyślij do admina<\/button><\/form>
   <h3 class="sec">Twoje dane<\/h3>
-  <p class="note">Twoje treningi, plan, notatki i linki widzisz tylko Ty. Admin widzi Twój e-mail, imię, datę dołączenia i ostatniej aktywności — nie widzi treningów ani notatek. Dane są w bazie Supabase w UE (Frankfurt). Notatki są opcjonalne — nie musisz wpisywać informacji o zdrowiu.<\/p>
+  <p class="note">Twoje treningi, plan, notatki i linki są widoczne w apce tylko dla Ciebie. Admin w apce widzi Twój e-mail, imię, datę dołączenia i ostatniej aktywności — nie ma tam wglądu w treningi ani notatki. Jako właściciel bazy admin technicznie mógłby je odczytać i zobowiązuje się tego nie robić. Dane są w bazie Supabase w UE (Frankfurt), kopia zapasowa jest szyfrowana. Notatki są opcjonalne — nie wpisuj w nich informacji o zdrowiu, jeśli nie musisz.<\/p>
   <div class="row" style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn sm" data-ac="export" type="button">Pobierz moje dane (JSON)<\/button>
   <label class="btn sm" style="cursor:pointer">Importuj dane z pliku<input type="file" accept=".json,application/json" data-ac="importfile" hidden><\/label><\/div>
   ${imp?`<div class="dialog" style="margin-top:8px"><strong>Import z pliku${imp.from?" ("+e_(imp.from)+")":""}<\/strong>
@@ -524,7 +524,7 @@ function doImport(d){
   S.sessions=[...d.sessions,...S.sessions.filter(x=>!ids.has(x.id))].sort((a,b)=>(b.ts||0)-(a.ts||0));LS.set("ab.sessions",S.sessions);
   d.sessions.forEach(x=>{const {id,...rest}=x;sync("session",id,rest)});
   Object.entries(d.swaps).forEach(([k,v])=>{if(v&&v.cat){S.swaps[k]=v;sync("swap",k,v)}});LS.set("ab.swaps",S.swaps);
-  Object.entries(d.videos).forEach(([k,v])=>{if(v){S.videos[k]=v;sync("video",k,v)}});LS.set("ab.videos",S.videos);
+  Object.entries(d.videos).forEach(([k,v])=>{if(v&&isUrl(v.url||"")){S.videos[k]={url:v.url,name:String(v.name||"").slice(0,120),...(v.cat?{cat:String(v.cat)}:{})};sync("video",k,S.videos[k])}});LS.set("ab.videos",S.videos);
   render();return d.sessions.length;
 }
 q("#acbody").addEventListener("submit",async ev=>{ev.preventDefault();const f=ev.target,k=f.dataset.ac,v=Object.fromEntries(new FormData(f));
@@ -722,6 +722,8 @@ const target=e=>blockWeek()<BLOCK.late_from_week?e.early:e.late;
 const setsCount=t=>{const m=String(t).match(/(\d)(?:–(\d))?\s*×/);return m?+(m[2]||m[1]):2};
 const fmtDate=d=>new Date(d+"T12:00:00").toLocaleDateString("pl-PL",{weekday:"short",day:"numeric",month:"short"});
 function isUrl(u){try{const x=new URL(u);return x.protocol==="https:"||x.protocol==="http:"}catch(e){return false}}
+/* only http(s) links ever reach an href, also for links from the database or an imported file */
+function safeUrl(u){return u&&isUrl(u)?u:""}
 function exName(E){return vid(E).name||E.name}
 
 /* ---------- draft (per day, this browser) ---------- */
@@ -767,7 +769,7 @@ function renderDay(day){
       ${e.swapped?`<p class="note swapped">Zamiast: ${esc(slot.planName)} · <button class="linkbtn" data-act="restore" type="button">przywróć z planu</button></p>`:""}
       ${e.note?`<p class="note">${esc(e.note)}</p>`:""}
       ${e.tips.length?`<details class="tech"><summary>Technika</summary><ul>${e.tips.map(t=>`<li>${esc(t)}</li>`).join("")}</ul></details>`:""}
-      ${editing===e.id?linkForm(e,v):`<div class="yt">${(v.url||e.video)?`<a class="btn play" href="${esc(v.url||e.video)}" target="_blank" rel="noopener">▶ Jak ćwiczyć</a><button class="btn sm ghost" data-act="edit" type="button">Zmień link</button>`:`<button class="btn ghost" data-act="edit" type="button">+ Wklej link YouTube</button><span class="ytsearch">Szukaj na YT: <a class="btn sm" href="https://www.youtube.com/results?search_query=${encodeURIComponent(e.qpl)}" target="_blank" rel="noopener">PL</a><a class="btn sm" href="https://www.youtube.com/results?search_query=${encodeURIComponent(e.qen)}" target="_blank" rel="noopener">EN</a></span>`}</div>`}
+      ${editing===e.id?linkForm(e,v):`<div class="yt">${safeUrl(v.url||e.video)?`<a class="btn play" href="${esc(safeUrl(v.url||e.video))}" target="_blank" rel="noopener">▶ Jak ćwiczyć</a><button class="btn sm ghost" data-act="edit" type="button">Zmień link</button>`:`<button class="btn ghost" data-act="edit" type="button">+ Wklej link YouTube</button><span class="ytsearch">Szukaj na YT: <a class="btn sm" href="https://www.youtube.com/results?search_query=${encodeURIComponent(e.qpl)}" target="_blank" rel="noopener">PL</a><a class="btn sm" href="https://www.youtube.com/results?search_query=${encodeURIComponent(e.qen)}" target="_blank" rel="noopener">EN</a></span>`}</div>`}
       <div class="sets"><span class="h">#</span><span class="h">${esc(e.load||"Kg / ust.")}</span><span class="h">${e.unit==="s"?"Sekundy":"Powt."}</span><span></span>
       ${x.sets.map((t,k)=>`<span class="n">${k+1}</span><input id="w-${day}-${e.id}-${k}" data-f="w" data-k="${k}" value="${esc(t.w)}" inputmode="text" aria-label="Seria ${k+1} ciężar"><input id="r-${day}-${e.id}-${k}" data-f="r" data-k="${k}" value="${esc(t.r)}" inputmode="numeric" aria-label="Seria ${k+1} powtórzenia"><button class="x" data-act="rm" data-k="${k}" type="button" aria-label="Usuń serię">×</button>`).join("")}
       </div>

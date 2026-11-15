@@ -150,7 +150,7 @@ body.lock{overflow:hidden}
 .limnote{border-left:3px solid var(--warn);padding-left:8px}
 @media (prefers-reduced-motion: reduce){*{transition:none!important}}
 </style>
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-FdKHbo1qrKhFzwph/Va2Y6stMenA5tlLIsyPmHQLMnc=' 'sha256-H++XKR3uYqo19nO27RHuM8/JH1rjHf5CC+Dg2dIYB/0='; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self' https://edxtfametahkkqzudafe.supabase.co; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-LDEdqo7OxIpG/H2AK1X1ntYiWiccqJHODLepFl1xGI0=' 'sha256-SYGvMcSC8vmc9LUIi3VK3ZH2NEXSNia9BMnrkuuSvoc='; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self' https://edxtfametahkkqzudafe.supabase.co; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#1B201D">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -509,7 +509,7 @@ function renderAcct(){
 }
 q("#acbody").addEventListener("click",async ev=>{const b=ev.target.closest("button[data-ac]");if(!b)return;const a=b.dataset.ac;
   if(a==="importno"){imp=null;return renderAcct()}
-  if(a==="importyes"){const n=doImport(imp);imp=null;ac={ok:`Zaimportowano: ${n} ${n===1?"trening":"treningów"}. Wysyłam na konto…`};renderAcct();q("#acct").scrollTop=0;return}
+  if(a==="importyes"){const pl=imp.plan,n=doImport(imp);imp=null;ac={ok:`Zaimportowano: ${[pl?`plan „${pl.name}”`:"",n?`${n} ${n===1?"trening":"treningów"}`:""].filter(Boolean).join(" i ")||"dane"}. Wysyłam na konto…`};renderAcct();q("#acct").scrollTop=0;return}
   if(a==="export"){const blob=new Blob([JSON.stringify({format:"silownia-1",exported_at:new Date().toISOString(),account:{email:me.email,name:me.name},
       plan:PLANOBJ,settings:S.settings,sessions:S.sessions,swaps:S.swaps,videos:S.videos},null,2)],{type:"application/json"});
     const a2=document.createElement("a");a2.href=URL.createObjectURL(blob);a2.download="silownia-moje-dane-"+today()+".json";document.body.appendChild(a2);a2.click();a2.remove();setTimeout(()=>URL.revokeObjectURL(a2.href),5000);return}
@@ -747,12 +747,14 @@ function draft(day){
   return d;
 }
 const putDraft=(day,d)=>LS.set("ab.draft."+day,d);
-/* last result of the same exercise on the same day of the plan (same slot first, then any slot) */
-function lastFor(day,E){
+/* last result of the same exercise: on the same day of the plan (same slot first, then any slot);
+   with anyDay — the most recent one on any day (e.g. the same machine in A and B) */
+function lastFor(day,E,anyDay){
   const has=v=>v&&v.sets&&v.sets.some(t=>t.w||t.r), isE=(k,v)=>(v.cat||((slotById(k)||{}).def))===E.cat;
-  for(const s of S.sessions){if(s.day!==day||!s.ex)continue;
-    const v=s.ex[E.id];if(has(v)&&isE(E.id,v))return {date:s.date,...v};
-    const o=Object.entries(s.ex).find(([k,v])=>has(v)&&isE(k,v));if(o)return {date:s.date,...o[1]}}
+  const recent=[...S.sessions].sort((a,b)=>(b.date||"").localeCompare(a.date||"")||(b.ts||0)-(a.ts||0));
+  for(const s of recent){if((!anyDay&&s.day!==day)||!s.ex)continue;
+    const v=s.ex[E.id];if(has(v)&&isE(E.id,v))return {date:s.date,day:s.day,...v};
+    const o=Object.entries(s.ex).find(([k,v])=>has(v)&&isE(k,v));if(o)return {date:s.date,day:s.day,...o[1]}}
   return null}
 const setsTxt=x=>x.sets.filter(t=>t.w||t.r).map(t=>(t.w?t.w+"×":"")+(t.r||"–")).join(" · ");
 
@@ -772,7 +774,7 @@ function renderDay(day){
   let h=`<div class="dayhead"><span class="k">Trening ${day} · tydz. ${w}${w>BLOCK.weeks?" (po bloku)":""}</span><h2>${esc(P.title)}</h2><p>${esc(P.sub)}. ${esc((BLOCK.stage_hints.find(x=>w>=x.from&&w<=x.to)||{}).text||"")}</p>${(PLANOBJ.notes||[]).map(n=>`<p class="note limnote">${esc(n)}</p>`).join("")}</div>`;
   h+=`<details class="warm"><summary>${esc(WARM.title)}</summary><ul>${WARM.items.map(x=>`<li>${esc(x)}</li>`).join("")}</ul></details>`;
   P.ex.forEach((slot,i)=>{
-    const e=eff(slot),v=vid(e),x=d.ex[e.id]||{sets:[{w:"",r:""}],rir:""},prev=lastFor(day,e);
+    const e=eff(slot),v=vid(e),x=d.ex[e.id]||{sets:[{w:"",r:""}],rir:""},prev=lastFor(day,e),prevAny=lastFor(day,e,true),other=prevAny&&prevAny.day!==day&&(!prev||prevAny.date>prev.date)?prevAny:null;
     const done=x.sets.length&&x.sets.every(t=>t.r);
     h+=`<section class="ex${done?" done":""}" data-ex="${e.id}">
       <div class="exh"><span class="num">${i+1}</span><div class="t"><h3>${esc(exName(e))}</h3>
@@ -791,6 +793,7 @@ function renderDay(day){
         <button class="btn sm pri" data-act="rest" type="button">Przerwa ${Math.floor(e.sec/60)}:${String(e.sec%60).padStart(2,"0")}</button>
       </div>
       <div class="prev">${prev?`Ostatnio (${fmtDate(prev.date)}): ${esc(setsTxt(prev))}${prev.rir?` · zapas ${esc(prev.rir)}`:""}`:"Brak poprzedniego zapisu"}</div>
+      ${other?`<div class="prev">Ostatnio w ${esc((PLAN[other.day]||{}).tab||other.day)} (${fmtDate(other.date)}): ${esc(setsTxt(other))}${other.rir?` · zapas ${esc(other.rir)}`:""}</div>`:""}
     </section>`;
   });
   h+=`<section class="finish"><label for="note-${day}" style="font-weight:600">Notatka po treningu</label>

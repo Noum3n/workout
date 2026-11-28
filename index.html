@@ -153,7 +153,7 @@ body.typing .timer{display:none}
 .limnote{border-left:3px solid var(--warn);padding-left:8px}
 @media (prefers-reduced-motion: reduce){*{transition:none!important}}
 </style>
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-LDEdqo7OxIpG/H2AK1X1ntYiWiccqJHODLepFl1xGI0=' 'sha256-aN2qJbuExl4LB9X5L128HcUTr/J1ZiHWjIRcIdpYhrk='; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self' https://edxtfametahkkqzudafe.supabase.co; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-2ljuGi+S+0VbdjgL1x0ruaY5GKbirRkfXacTtCBFwi4=' 'sha256-aN2qJbuExl4LB9X5L128HcUTr/J1ZiHWjIRcIdpYhrk='; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self' https://edxtfametahkkqzudafe.supabase.co; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#1B201D">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -187,6 +187,7 @@ body.typing .timer{display:none}
 .codebox{font:600 20px var(--mono);letter-spacing:.08em;overflow-wrap:anywhere}
 h3.sec{font:700 14px var(--display);letter-spacing:.1em;text-transform:uppercase;color:var(--day);margin:16px 0 0}
 .btn.danger{border-color:var(--warn);color:var(--warn)}
+.card.fb.done{opacity:.6}
 </style>
 
 <div class="wrap">
@@ -396,7 +397,7 @@ async function enter(u,joined){
   me={uid:u.id,email:u.email,name:m.display_name,admin:m.is_admin,invites_left:m.invites_left};G.set("me",me);
   LSP.v=me.uid+":";if(switched)loadCache();
   closeGate();showButtons();render();
-  rpc("touch");
+  rpc("touch");refreshBadge();
   await flush();await pull();
   if(joined||(!PLANOBJ&&!S.sessions.length&&!LS.get("creator_seen",false))){LS.set("creator_seen",true);if(!PLANOBJ)openCreator()}
 }
@@ -563,17 +564,32 @@ let ad={},AD=null;
 const ST_PL={pending:"oczekuje",used:"wykorzystane",expired:"wygasło",revoked:"anulowane"};
 async function loadAdmin(){
   q("#adbody").innerHTML=`<p class="note">Wczytywanie…<\/p>`;
-  const {data,error}=await rpc("admin_overview");
+  const [{data,error},fb]=await Promise.all([rpc("admin_overview"),rpc("admin_feedback")]);
   if(error){q("#adbody").innerHTML=`<p class="msg err">${e_(authMsg(error))}<\/p>`;return}
-  AD=data;renderAdmin();
+  AD=data;AD.feedback=fb.error?null:(fb.data||[]);adminBadge();renderAdmin();
 }
 const inviteText=(code,exp)=>`Cześć! Zapraszam Cię do apki treningowej „Siłownia”. Otwórz link na telefonie i załóż konto (e-mail + hasło):\n${appUrl()}?zaproszenie=${code}\n\nZaproszenie jest jednorazowe, ważne do ${fmtD(exp)}. Potem dodaj apkę do ekranu głównego (iPhone: Safari → Udostępnij → Do ekranu początkowego; Android: menu ⋮ → Dodaj do ekranu głównego).`;
 const resetText=code=>`Kod do zmiany hasła w apce „Siłownia”: ${code}\nWażny 24 godziny. W apce: Nie pamiętam hasła → wpisz e-mail, kod i nowe hasło.\n${appUrl()}`;
+/* uwagi od użytkowników (0006): nowe na górze, załatwione zwinięte */
+let fbShowDone=false;
+function feedbackHtml(F,nameOf){
+  if(F==null)return `<h3 class="sec">Uwagi<\/h3><p class="note">Żeby czytać tu uwagi, uruchom w Supabase migrację <span class="mono">0006_admin_feedback.sql<\/span>.<\/p>`;
+  const who=f=>f.email?e_(nameOf(f)):"(konto usunięte)",open=F.filter(f=>!f.done_at),done=F.filter(f=>f.done_at);
+  const card=f=>`<div class="card fb${f.done_at?" done":""}" data-fb="${f.id}"><div class="row" style="justify-content:space-between"><strong style="overflow-wrap:anywhere">${who(f)}<\/strong><span class="sub">${fmtDT(f.created_at)}<\/span><\/div>
+    <p style="margin:0;white-space:pre-wrap;overflow-wrap:anywhere">${e_(f.text)}<\/p>
+    <div class="row">${f.email&&f.email!==nameOf(f)?`<span class="sub">${e_(f.email)}<\/span>`:""}<button class="btn sm ghost" data-ad="${f.done_at?"fbopen":"fbdone"}" type="button">${f.done_at?"Przywróć":"✓ Załatwione"}<\/button><\/div><\/div>`;
+  return `<h3 class="sec">Uwagi${open.length?` (${open.length} ${open.length===1?"nowa":"nowe"})`:""}<\/h3>
+    ${open.length?open.map(card).join(""):`<p class="note">Brak nowych uwag.<\/p>`}
+    ${done.length?`<button class="linkbtn" data-ad="fbtoggle" type="button">${fbShowDone?"Ukryj załatwione":`Pokaż załatwione (${done.length})`}<\/button>${fbShowDone?done.map(card).join(""):""}`:""}`;
+}
+function adminBadge(){const F=AD&&AD.feedback,n=F?F.filter(f=>!f.done_at).length:0;q("#adminBtn").textContent=n?`Admin · ${n}`:"Admin"}
+async function refreshBadge(){if(!(me&&me.admin))return;const {data,error}=await rpc("admin_feedback");if(!error){AD=AD||{};AD.feedback=data||[];adminBadge()}}
 function renderAdmin(){
   const A=AD,s=A.settings,mine=me.uid;
   const nameOf=m=>m.admin_label||m.display_name||m.email;
   let h=`${ad.ok?`<p class="msg ok" role="status">${e_(ad.ok)}<\/p>`:""}${ad.err?`<p class="msg err" role="alert">${e_(ad.err)}<\/p>`:""}
   <div class="card"><span class="sub">Konta<\/span><strong>${A.member_count} z ${s.max_members}<\/strong><\/div>
+  ${feedbackHtml(A.feedback,nameOf)}
   <h3 class="sec">Zaproś<\/h3>
   <form class="form" data-ad="invite"><label>Dla kogo? (notatka widoczna tylko dla Ciebie)<input name="note" maxlength="100" placeholder="np. dla Kasi" autocomplete="off"><\/label><button class="btn pri" type="submit">Utwórz zaproszenie<\/button><\/form>`;
   if(ad.invite){const i=ad.invite;h+=`<div class="card"><span class="sub">Nowe zaproszenie${i.note?" — "+e_(i.note):""}<\/span><span class="codebox">${e_(i.code)}<\/span>
@@ -603,7 +619,7 @@ function renderAdmin(){
   h+=`<h3 class="sec">Ustawienia<\/h3>
   <form class="form" data-ad="limits"><label>Limit kont<input name="max" type="number" min="1" max="1000" value="${s.max_members}" inputmode="numeric"><\/label>
   <label>Ważność zaproszenia (dni)<input name="days" type="number" min="1" max="60" value="${s.invite_days}" inputmode="numeric"><\/label><button class="btn sm" type="submit">Zapisz ustawienia<\/button><\/form>
-  <p class="note">Uwagi zgłoszone przez użytkowników przeczytasz w Supabase: Table Editor → feedback. Treningów innych osób nie widać ani tu, ani w apce.<\/p>`;
+  <p class="note">Treningów innych osób nie widać ani tu, ani w apce.<\/p>`;
   q("#adbody").innerHTML=h;
 }
 async function adCall(fn,args,ok){const {data,error}=await rpc(fn,args);
@@ -612,6 +628,8 @@ async function adCall(fn,args,ok){const {data,error}=await rpc(fn,args);
 q("#adbody").addEventListener("click",async ev=>{const b=ev.target.closest("button[data-ad]");if(!b)return;const a=b.dataset.ad;
   const card=b.closest("[data-u]"),uid=card&&card.dataset.u,ic=b.closest("[data-code]"),code=(ic&&ic.dataset.code)||b.dataset.code,box=(b.closest(".row")||b.parentNode).querySelector("[data-box]");
   const m=uid&&AD.members.find(x=>x.user_id===uid);
+  if(a==="fbtoggle"){fbShowDone=!fbShowDone;return renderAdmin()}
+  if(a==="fbdone"||a==="fbopen"){const id=+b.closest("[data-fb]").dataset.fb;ad={};return adCall("admin_feedback_done",{p_id:id,p_done:a==="fbdone"})}
   if(a==="share"){const i=ad.invite;return share(inviteText(i.code,i.expires_at),box)}
   if(a==="sharereset")return share(resetText(ad.reset.code),box);
   if(a==="resend"){const i=AD.invites.find(x=>x.code===code);return share(inviteText(i.code,i.expires_at),box)}
